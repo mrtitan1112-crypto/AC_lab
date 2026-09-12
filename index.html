@@ -393,51 +393,47 @@
 
             // Step physics forward by dt
             step() {
-                const N = this.maxNodes;
+                const K = this.maxNodes;
+                const matrix = Array(K).fill(0).map(() => Array(K).fill(0));
+                const rhs = Array(K).fill(0);
                 
-                // Initialize Matrix (G) and Vector (I)
-                let G = Array(N).fill().map(() => Array(N).fill(0));
-                let I = Array(N).fill(0);
+                // FIX: Add tiny parasitic conductance to ground (1 nano-ohm) for ALL nodes.
+                // This instantly clears the "ghost memory" bug on empty holes.
+                for(let i = 0; i < K; i++) {
+                    matrix[i][i] += 1e-9;
+                }
 
-                // Minimum conductance to prevent singular matrix (floating nodes)
-                const G_min = 1e-9;
-                for(let i=1; i<N; i++) G[i][i] += G_min;
-
-                const fgV = this.getFgVoltage();
-
-                // Build Matrices
                 this.components.forEach(c => {
-                    const i = c.n1; // Node 1
-                    const j = c.n2; // Node 2
-                    
                     let g = 0;
                     let i_eq = 0;
+                    const i = c.n1;
+                    const j = c.n2 || 0;
 
-                    if (c.type === 'wire') {
-                        g = 1.0 / 0.01; // 0.01 ohm wire
-                    } 
-                    else if (c.type === 'resistor') {
-                        g = 1.0 / Math.max(c.val, 1e-3);
-                    } 
+                    if (c.type === 'resistor' || c.type === 'wire') {
+                        g = 1.0 / c.val;
+                    }
                     else if (c.type === 'capacitor') {
-                        // Backward Euler: Capacitor acts as resistor in parallel with current source
-                        const C = c.val * 1e-6; // Convert uF to F
+                        const C = c.val * 1e-6; 
                         g = C / this.dt;
                         const vOld1 = this.voltages[i] || 0;
                         const vOld2 = j > 0 ? (this.voltages[j] || 0) : 0;
                         i_eq = g * (vOld1 - vOld2);
                     }
                     else if (c.type === 'diode') {
-                        // Piecewise Linear Diode Model based on previous step voltage
+                        // FIX: Perfect Diode Clipper - Norton Equivalent Battery Model
                         const vOld1 = this.voltages[i] || 0;
                         const vOld2 = j > 0 ? (this.voltages[j] || 0) : 0;
-                        if ((vOld1 - vOld2) > 0.6) {
-                            g = 1.0 / 10; // 10 ohms when ON
+                        const vD = vOld1 - vOld2;
+                        if (vD > 0.6) {
+                            g = 1.0 / 10; // 10 ohms ON resistance
+                            i_eq = 0.6 * g; // 0.6V internal drop equivalent
                         } else {
-                            g = 1.0 / 1e6; // 1M ohms when OFF
+                            g = 1.0 / 1e6; // 1 Megohm OFF resistance (Stops Shading)
+                            i_eq = 0;
                         }
                     }
 
+                    if (i !== 0) { matrix[i][i] += g; rhs[i] -= i_eq; }
                     // Stamp into matrix (Node 0 is implicitly ground, we don't stamp it)
                     if (i > 0) G[i][i] += g;
                     if (j > 0) G[j][j] += g;
@@ -831,58 +827,50 @@
             let currentDisplayVolts1 = 0;
             let currentDisplayVolts2 = 0;
             
-            for(let x=0; x<pixels; x++) {
-                // Step physics forward
-                let localTimeAccumulator = 0;
-                while(localTimeAccumulator < timeStep) {
-                    engine.step();
-                    localTimeAccumulator += engine.dt;
-                }
+             for(let x=0; x<pixels; x++) {
+                engine.step();
                 
-                // Calculate Voltages relative to CRO (-)
-                const vMinus = engine.croMinusNode ? engine.voltages[engine.croMinusNode] : 0;
-                const v1 = engine.croCh1Node ? engine.voltages[engine.croCh1Node] - vMinus : 0;
-                const v2 = engine.croCh2Node ? engine.voltages[engine.croCh2Node] - vMinus : 0;
+                // Strict check: if probe is not placed on the board, voltage is exactly 0.
+                const croMinusV = engine.croMinusNode !== null ? engine.getVoltage(engine.croMinusNode) : 0;
+                const v1 = engine.croCh1Node !== null ? (engine.getVoltage(engine.croCh1Node) - croMinusV) : 0;
+                const v2 = engine.croCh2Node !== null ? (engine.getVoltage(engine.croCh2Node) - croMinusV) : 0;
                 
                 if(x === pixels - 1) { 
                     currentDisplayVolts1 = v1; 
                     currentDisplayVolts2 = v2; 
                 }
                 
-                // Map V to Y pixel
-                const y1 = (canvas.height/2) - ((v1 / voltsPerDiv1) * (canvas.height/8));
-                const y2 = (canvas.height/2) - ((v2 / voltsPerDiv2) * (canvas.height/8));
+                // Map V to Y pixel with Y-Position offset
+                const pxPerDiv = canvas.height / 8;
+                const y1 = (canvas.height/2) - ((v1 / voltsPerDiv1) + yPos1) * pxPerDiv;
+                const y2 = (canvas.height/2) - ((v2 / voltsPerDiv2) + yPos2) * pxPerDiv;
                 
                 pts1.push({x, y: y1});
                 pts2.push({x, y: y2});
             }
             
             // Draw CH1 (Green)
-            ctx.strokeStyle = '#34d399';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            for(let i=0; i<pts1.length; i++) {
-                if(i===0) ctx.moveTo(pts1[i].x, pts1[i].y);
-                else ctx.lineTo(pts1[i].x, pts1[i].y);
+            if (engine.croCh1Node !== null) {
+                ctx.strokeStyle = '#10b981'; // Emerald
+                ctx.beginPath();
+                pts1.forEach((pt, i) => i===0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
+                ctx.stroke();
             }
-            ctx.stroke();
 
             // Draw CH2 (Yellow)
-            ctx.strokeStyle = '#facc15';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            for(let i=0; i<pts2.length; i++) {
-                if(i===0) ctx.moveTo(pts2[i].x, pts2[i].y);
-                else ctx.lineTo(pts2[i].x, pts2[i].y);
+            if (engine.croCh2Node !== null) {
+                ctx.strokeStyle = '#eab308'; // Yellow
+                ctx.beginPath();
+                pts2.forEach((pt, i) => i===0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
+                ctx.stroke();
             }
-            ctx.stroke();
-            
-            // Update Reading
-            document.getElementById('cro-reading').innerHTML = `<span class="text-emerald-400">CH1: ${currentDisplayVolts1.toFixed(2)}V</span> | <span class="text-yellow-400">CH2: ${currentDisplayVolts2.toFixed(2)}V</span>`;
-            
-            animationId = requestAnimationFrame(renderOscilloscope);
-        }
 
+            // Update Reading Display
+            document.getElementById('cro-reading').innerHTML = 
+                `<span class="text-emerald-400">CH1: ${currentDisplayVolts1.toFixed(2)}V</span> | <span class="text-yellow-400">CH2: ${currentDisplayVolts2.toFixed(2)}V</span>`;
+            
+            requestAnimationFrame(renderOscilloscope);
+        }
         // --- Demo Loaders ---
         function loadDemo(type) {
             clearBoard();

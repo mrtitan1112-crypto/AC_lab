@@ -126,26 +126,45 @@
 
         <!-- Oscilloscope -->
         <div class="p-4 border-b border-slate-700">
-            <h2 class="text-sm font-semibold text-emerald-400 mb-2 flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-white mb-2 flex items-center justify-between">
                 <span>Oscilloscope (CRO)</span>
-                <span id="cro-reading" class="text-xs text-emerald-300 font-mono">0.00V</span>
             </h2>
             <canvas id="cro-canvas" width="300" height="200" class="mb-3"></canvas>
+            <div id="cro-reading" class="text-xs font-mono text-center mb-3 bg-slate-900 rounded p-1">0.00V</div>
             
             <div class="space-y-3">
-                <div>
-                    <div class="flex justify-between text-xs mb-1 text-slate-400">
-                        <label>Time / Div</label>
-                        <span id="lbl-time">1.0 ms</span>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <div class="flex justify-between text-xs mb-1 text-slate-400">
+                            <label>Time/Div</label>
+                            <span id="lbl-time">1.0 ms</span>
+                        </div>
+                        <input type="range" id="cro-time" min="0.1" max="10" step="0.1" value="1.0">
                     </div>
-                    <input type="range" id="cro-time" min="0.1" max="10" step="0.1" value="1.0">
+                    <div>
+                        <div class="flex justify-between text-xs mb-1 text-slate-400">
+                            <label>X-Pos</label>
+                            <span id="lbl-xpos">0.0 div</span>
+                        </div>
+                        <input type="range" id="cro-xpos" min="-5" max="5" step="0.1" value="0">
+                    </div>
                 </div>
-                <div>
-                    <div class="flex justify-between text-xs mb-1 text-slate-400">
-                        <label>Voltage / Div</label>
-                        <span id="lbl-volt">2.0 V</span>
+                
+                <div class="grid grid-cols-2 gap-3 border-t border-slate-700 pt-2">
+                    <div>
+                        <div class="flex justify-between text-xs mb-1 text-emerald-400">
+                            <label>CH1 V/Div</label>
+                            <span id="lbl-volt1">2.0 V</span>
+                        </div>
+                        <input type="range" id="cro-volt1" min="0.1" max="10" step="0.1" value="2.0">
                     </div>
-                    <input type="range" id="cro-volt" min="0.1" max="10" step="0.1" value="2.0">
+                    <div>
+                        <div class="flex justify-between text-xs mb-1 text-yellow-400">
+                            <label>CH2 V/Div</label>
+                            <span id="lbl-volt2">2.0 V</span>
+                        </div>
+                        <input type="range" id="cro-volt2" min="0.1" max="10" step="0.1" value="2.0">
+                    </div>
                 </div>
             </div>
         </div>
@@ -168,10 +187,10 @@
                 </div>
                 <div>
                     <div class="flex justify-between text-xs mb-1 text-slate-400">
-                        <label>Amplitude (V peak)</label>
-                        <span id="lbl-amp">5.0 V</span>
+                        <label>Level (V peak)</label>
+                        <span id="lbl-level">5.0 V</span>
                     </div>
-                    <input type="range" id="fg-amp" min="0" max="12" step="0.5" value="5.0">
+                    <input type="range" id="fg-level" min="0" max="12" step="0.5" value="5.0">
                 </div>
             </div>
         </div>
@@ -211,9 +230,12 @@
             <div class="flex-1"></div>
             
             <span class="text-sm font-semibold text-slate-400 mr-2">Probes:</span>
-            <button class="tool-btn px-3 py-1.5 border border-red-900 bg-red-900/30 rounded text-sm text-red-400 hover:bg-red-900/60 transition" data-tool="fg">Func Gen (+)</button>
-            <button class="tool-btn px-3 py-1.5 border border-emerald-900 bg-emerald-900/30 rounded text-sm text-emerald-400 hover:bg-emerald-900/60 transition" data-tool="cro">CRO Probe</button>
-            <button class="tool-btn px-3 py-1.5 border border-slate-500 bg-slate-700 rounded text-sm text-white hover:bg-slate-600 transition" data-tool="gnd">Ground (0V)</button>
+            <button class="tool-btn px-2 py-1 border border-red-900 bg-red-900/30 rounded text-xs text-red-400 hover:bg-red-900/60" data-tool="fg_plus">FG (+)</button>
+            <button class="tool-btn px-2 py-1 border border-slate-600 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600" data-tool="fg_minus">FG (-)</button>
+            <button class="tool-btn px-2 py-1 border border-emerald-900 bg-emerald-900/30 rounded text-xs text-emerald-400 hover:bg-emerald-900/60" data-tool="cro_ch1">CH1 (+)</button>
+            <button class="tool-btn px-2 py-1 border border-yellow-900 bg-yellow-900/30 rounded text-xs text-yellow-400 hover:bg-yellow-900/60" data-tool="cro_ch2">CH2 (+)</button>
+            <button class="tool-btn px-2 py-1 border border-slate-600 bg-slate-700 rounded text-xs text-slate-300 hover:bg-slate-600" data-tool="cro_minus">CRO (-)</button>
+            <button class="tool-btn px-2 py-1 border border-slate-500 bg-slate-900 rounded text-xs text-slate-400 hover:bg-slate-700" data-tool="gnd">Earth</button>
             
             <button onclick="clearBoard()" class="ml-4 px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded text-sm text-white transition font-bold shadow">Clear All</button>
         </div>
@@ -340,8 +362,11 @@
                 this.time = 0;
                 this.maxNodes = 200; // Array size for matrix
                 this.components = []; // {id, type, n1, n2, val, el1, el2}
-                this.fgNode = null;
-                this.croNode = null;
+                this.fgNodePlus = null;
+                this.fgNodeMinus = null;
+                this.croCh1Node = null;
+                this.croCh2Node = null;
+                this.croMinusNode = null;
                 this.gndNodes = new Set();
                 this.voltages = new Array(this.maxNodes).fill(0);
             }
@@ -353,10 +378,10 @@
 
             // FG Voltage Generation
             getFgVoltage() {
-                if(!this.fgNode) return 0;
+                if(this.fgNodePlus === null && this.fgNodeMinus === null) return 0;
                 const type = document.querySelector('.fg-wave.bg-blue-600').dataset.wave;
                 const freq = parseFloat(document.getElementById('fg-freq').value);
-                const amp = parseFloat(document.getElementById('fg-amp').value);
+                const amp = parseFloat(document.getElementById('fg-level').value); // Level
                 
                 const w = 2 * Math.PI * freq;
                 const phase = w * this.time;
@@ -425,10 +450,23 @@
                 });
 
                 // Function Generator (Norton Equivalent: current source + parallel resistor)
-                if (this.fgNode > 0) {
+                if (this.fgNodePlus !== null || this.fgNodeMinus !== null) {
                     const g_fg = 1.0 / 50.0; // 50 ohm internal resistance
-                    G[this.fgNode][this.fgNode] += g_fg;
-                    I[this.fgNode] += fgV * g_fg;
+                    const p = this.fgNodePlus || 0;
+                    const m = this.fgNodeMinus || 0;
+
+                    if (p > 0) G[p][p] += g_fg;
+                    if (m > 0) G[m][m] += g_fg;
+                    if (p > 0 && m > 0) {
+                        G[p][m] -= g_fg;
+                        G[m][p] -= g_fg;
+                    }
+
+                    if (fgV !== 0) {
+                        const i_eq = fgV * g_fg;
+                        if (p > 0) I[p] += i_eq;
+                        if (m > 0) I[m] -= i_eq;
+                    }
                 }
 
                 // Hard Grounds (Force node voltage to 0)
@@ -443,8 +481,11 @@
                 // Solve Matrix G * V = I (Gaussian Elimination)
                 // We only solve for active nodes to save massive CPU time
                 const activeNodes = new Set([...this.gndNodes]);
-                if(this.fgNode) activeNodes.add(this.fgNode);
-                if(this.croNode) activeNodes.add(this.croNode);
+                if(this.fgNodePlus) activeNodes.add(this.fgNodePlus);
+                if(this.fgNodeMinus) activeNodes.add(this.fgNodeMinus);
+                if(this.croCh1Node) activeNodes.add(this.croCh1Node);
+                if(this.croCh2Node) activeNodes.add(this.croCh2Node);
+                if(this.croMinusNode) activeNodes.add(this.croMinusNode);
                 this.components.forEach(c => { activeNodes.add(c.n1); if(c.n2) activeNodes.add(c.n2); });
                 activeNodes.delete(0); // Ignore absolute ground
                 
@@ -537,9 +578,12 @@
 
         function handleHoleClick(e, el, nodeId) {
             // Probes are single click
-            if (['fg', 'cro', 'gnd'].includes(currentTool)) {
-                if(currentTool === 'fg') engine.fgNode = nodeId;
-                if(currentTool === 'cro') engine.croNode = nodeId;
+            if (['fg_plus', 'fg_minus', 'cro_ch1', 'cro_ch2', 'cro_minus', 'gnd'].includes(currentTool)) {
+                if(currentTool === 'fg_plus') engine.fgNodePlus = nodeId;
+                if(currentTool === 'fg_minus') engine.fgNodeMinus = nodeId;
+                if(currentTool === 'cro_ch1') engine.croCh1Node = nodeId;
+                if(currentTool === 'cro_ch2') engine.croCh2Node = nodeId;
+                if(currentTool === 'cro_minus') engine.croMinusNode = nodeId;
                 if(currentTool === 'gnd') engine.gndNodes.add(nodeId);
                 
                 const c = { id: compCounter++, type: currentTool, n1: nodeId, el1: el };
@@ -597,14 +641,17 @@
                 const p1 = nodePositions.get(c.el1);
                 
                 // Draw Single Terminal Probes
-                if (['fg', 'cro', 'gnd'].includes(c.type)) {
+                if (['fg_plus', 'fg_minus', 'cro_ch1', 'cro_ch2', 'cro_minus', 'gnd'].includes(c.type)) {
                     const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                     circle.setAttribute('cx', p1.x);
                     circle.setAttribute('cy', p1.y);
                     circle.setAttribute('r', 8);
                     
-                    if(c.type === 'fg') circle.setAttribute('fill', '#ef4444'); // Red
-                    if(c.type === 'cro') circle.setAttribute('fill', '#10b981'); // Emerald
+                    if(c.type === 'fg_plus') circle.setAttribute('fill', '#ef4444'); // Red
+                    if(c.type === 'fg_minus') circle.setAttribute('fill', '#475569'); // Slate
+                    if(c.type === 'cro_ch1') circle.setAttribute('fill', '#10b981'); // Emerald
+                    if(c.type === 'cro_ch2') circle.setAttribute('fill', '#eab308'); // Yellow
+                    if(c.type === 'cro_minus') circle.setAttribute('fill', '#475569'); // Slate
                     if(c.type === 'gnd') circle.setAttribute('fill', '#000000'); // Black
                     
                     circle.classList.add('component-line');
@@ -618,7 +665,15 @@
                     text.setAttribute('fill', '#fff');
                     text.setAttribute('font-size', '10px');
                     text.setAttribute('font-weight', 'bold');
-                    text.textContent = c.type.toUpperCase();
+                    
+                    let label = c.type.toUpperCase();
+                    if(c.type === 'fg_plus') label = 'FG+';
+                    if(c.type === 'fg_minus') label = 'FG-';
+                    if(c.type === 'cro_ch1') label = 'CH1';
+                    if(c.type === 'cro_ch2') label = 'CH2';
+                    if(c.type === 'cro_minus') label = 'CRO-';
+                    
+                    text.textContent = label;
                     svg.appendChild(text);
                     return;
                 }
@@ -680,8 +735,11 @@
         function deleteComponent(id) {
             const comp = engine.components.find(c => c.id === id);
             if (comp) {
-                if(comp.type === 'fg') engine.fgNode = null;
-                if(comp.type === 'cro') engine.croNode = null;
+                if(comp.type === 'fg_plus') engine.fgNodePlus = null;
+                if(comp.type === 'fg_minus') engine.fgNodeMinus = null;
+                if(comp.type === 'cro_ch1') engine.croCh1Node = null;
+                if(comp.type === 'cro_ch2') engine.croCh2Node = null;
+                if(comp.type === 'cro_minus') engine.croMinusNode = null;
                 if(comp.type === 'gnd') engine.gndNodes.delete(comp.n1);
                 
                 engine.components = engine.components.filter(c => c.id !== id);
@@ -692,8 +750,11 @@
 
         function clearBoard() {
             engine.components = [];
-            engine.fgNode = null;
-            engine.croNode = null;
+            engine.fgNodePlus = null;
+            engine.fgNodeMinus = null;
+            engine.croCh1Node = null;
+            engine.croCh2Node = null;
+            engine.croMinusNode = null;
             engine.gndNodes.clear();
             engine.reset();
             drawComponents();
@@ -707,14 +768,18 @@
         
         // UI Listeners
         const timeInput = document.getElementById('cro-time');
-        const voltInput = document.getElementById('cro-volt');
+        const xPosInput = document.getElementById('cro-xpos');
+        const volt1Input = document.getElementById('cro-volt1');
+        const volt2Input = document.getElementById('cro-volt2');
         const freqInput = document.getElementById('fg-freq');
-        const ampInput = document.getElementById('fg-amp');
+        const levelInput = document.getElementById('fg-level');
         
         timeInput.oninput = () => document.getElementById('lbl-time').innerText = timeInput.value + ' ms';
-        voltInput.oninput = () => document.getElementById('lbl-volt').innerText = voltInput.value + ' V';
+        xPosInput.oninput = () => document.getElementById('lbl-xpos').innerText = parseFloat(xPosInput.value).toFixed(1) + ' div';
+        volt1Input.oninput = () => document.getElementById('lbl-volt1').innerText = volt1Input.value + ' V';
+        volt2Input.oninput = () => document.getElementById('lbl-volt2').innerText = volt2Input.value + ' V';
         freqInput.oninput = () => document.getElementById('lbl-freq').innerText = freqInput.value + ' Hz';
-        ampInput.oninput = () => document.getElementById('lbl-amp').innerText = ampInput.value + ' V';
+        levelInput.oninput = () => document.getElementById('lbl-level').innerText = levelInput.value + ' V';
 
         function renderOscilloscope() {
             // Clear Screen
@@ -738,54 +803,82 @@
 
             // Run Simulation & Draw Trace
             const timePerDiv = parseFloat(timeInput.value) * 1e-3; // ms to sec
-            const voltsPerDiv = parseFloat(voltInput.value);
+            const voltsPerDiv1 = parseFloat(volt1Input.value);
+            const voltsPerDiv2 = parseFloat(volt2Input.value);
             const totalTime = timePerDiv * 10; // 10 divisions wide
             
-            // Sync Phase (Hardware Trigger Simulation)
+            // Sync Phase & X-Position
             const fgFreq = parseFloat(freqInput.value);
             const period = 1.0 / fgFreq;
-            // Always start trace at phase 0 for a stable waveform
+            
+            const xShiftDivs = parseFloat(xPosInput.value);
+            const timeShift = xShiftDivs * timePerDiv;
+
             engine.reset();
             
-            // Preroll to let capacitors charge to steady state
+            // Offset the initial engine time so drawing starts at the shifted position
+            // We run a preroll to charge capacitors based on this shifted start time.
             const prerollSteps = Math.min(1000, Math.floor((period * 3) / engine.dt));
-            for(let i=0; i<prerollSteps; i++) engine.step();
-
-            ctx.strokeStyle = '#34d399';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
+            engine.time = -timeShift - (prerollSteps * engine.dt);
             
-            let lastY = canvas.height/2;
-            let currentDisplayVolts = 0;
+            for(let i=0; i<prerollSteps; i++) engine.step();
 
             const pixels = canvas.width;
             const timeStep = totalTime / pixels;
             
+            let pts1 = [];
+            let pts2 = [];
+            let currentDisplayVolts1 = 0;
+            let currentDisplayVolts2 = 0;
+            
             for(let x=0; x<pixels; x++) {
-                // Step physics forward by timeStep
-                // (Since engine.dt might be smaller or larger, we do multiple fine steps)
+                // Step physics forward
                 let localTimeAccumulator = 0;
                 while(localTimeAccumulator < timeStep) {
                     engine.step();
                     localTimeAccumulator += engine.dt;
                 }
                 
-                const voltage = engine.croNode ? engine.voltages[engine.croNode] : 0;
-                if(x === pixels - 1) currentDisplayVolts = voltage; // Get latest for text
+                // Calculate Voltages relative to CRO (-)
+                const vMinus = engine.croMinusNode ? engine.voltages[engine.croMinusNode] : 0;
+                const v1 = engine.croCh1Node ? engine.voltages[engine.croCh1Node] - vMinus : 0;
+                const v2 = engine.croCh2Node ? engine.voltages[engine.croCh2Node] - vMinus : 0;
+                
+                if(x === pixels - 1) { 
+                    currentDisplayVolts1 = v1; 
+                    currentDisplayVolts2 = v2; 
+                }
                 
                 // Map V to Y pixel
-                const yOffset = (voltage / voltsPerDiv) * (canvas.height/8);
-                const y = (canvas.height/2) - yOffset;
+                const y1 = (canvas.height/2) - ((v1 / voltsPerDiv1) * (canvas.height/8));
+                const y2 = (canvas.height/2) - ((v2 / voltsPerDiv2) * (canvas.height/8));
                 
-                if (x === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-                
-                lastY = y;
+                pts1.push({x, y: y1});
+                pts2.push({x, y: y2});
+            }
+            
+            // Draw CH1 (Green)
+            ctx.strokeStyle = '#34d399';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for(let i=0; i<pts1.length; i++) {
+                if(i===0) ctx.moveTo(pts1[i].x, pts1[i].y);
+                else ctx.lineTo(pts1[i].x, pts1[i].y);
+            }
+            ctx.stroke();
+
+            // Draw CH2 (Yellow)
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for(let i=0; i<pts2.length; i++) {
+                if(i===0) ctx.moveTo(pts2[i].x, pts2[i].y);
+                else ctx.lineTo(pts2[i].x, pts2[i].y);
             }
             ctx.stroke();
             
             // Update Reading
-            document.getElementById('cro-reading').innerText = currentDisplayVolts.toFixed(2) + 'V';
+            document.getElementById('cro-reading').innerHTML = `<span class="text-emerald-400">CH1: ${currentDisplayVolts1.toFixed(2)}V</span> | <span class="text-yellow-400">CH2: ${currentDisplayVolts2.toFixed(2)}V</span>`;
             
             animationId = requestAnimationFrame(renderOscilloscope);
         }
@@ -809,16 +902,23 @@
 
             if (type === 'rc') {
                 freqInput.value = 500; freqInput.oninput();
+                levelInput.value = 5; levelInput.oninput();
                 timeInput.value = 0.5; timeInput.oninput();
                 document.querySelector('[data-wave="square"]').click();
                 
                 // Add Components directly to engine
-                engine.fgNode = n_in;
-                engine.croNode = n_mid;
+                engine.fgNodePlus = n_in;
+                engine.croCh1Node = n_in; // CH1 sees input
+                engine.croCh2Node = n_mid; // CH2 sees output
+                engine.fgNodeMinus = n_gnd;
+                engine.croMinusNode = n_gnd;
                 engine.gndNodes.add(n_gnd);
                 
-                engine.components.push({ id: compCounter++, type: 'fg', n1: n_in, el1: h_in });
-                engine.components.push({ id: compCounter++, type: 'cro', n1: n_mid, el1: h_mid });
+                engine.components.push({ id: compCounter++, type: 'fg_plus', n1: n_in, el1: h_in });
+                engine.components.push({ id: compCounter++, type: 'cro_ch1', n1: n_in, el1: h_in });
+                engine.components.push({ id: compCounter++, type: 'cro_ch2', n1: n_mid, el1: h_mid });
+                engine.components.push({ id: compCounter++, type: 'fg_minus', n1: n_gnd, el1: h_gnd });
+                engine.components.push({ id: compCounter++, type: 'cro_minus', n1: n_gnd, el1: h_gnd });
                 engine.components.push({ id: compCounter++, type: 'gnd', n1: n_gnd, el1: h_gnd });
                 
                 engine.components.push({ id: compCounter++, type: 'resistor', n1: n_in, n2: n_mid, val: 1000, el1: h_in, el2: h_mid });
@@ -826,16 +926,22 @@
             } 
             else if (type === 'clipper') {
                 freqInput.value = 100; freqInput.oninput();
-                ampInput.value = 8; ampInput.oninput();
+                levelInput.value = 8; levelInput.oninput();
                 timeInput.value = 2.0; timeInput.oninput();
                 document.querySelector('[data-wave="sine"]').click();
                 
-                engine.fgNode = n_in;
-                engine.croNode = n_mid;
+                engine.fgNodePlus = n_in;
+                engine.croCh1Node = n_in;
+                engine.croCh2Node = n_mid;
+                engine.fgNodeMinus = n_gnd;
+                engine.croMinusNode = n_gnd;
                 engine.gndNodes.add(n_gnd);
                 
-                engine.components.push({ id: compCounter++, type: 'fg', n1: n_in, el1: h_in });
-                engine.components.push({ id: compCounter++, type: 'cro', n1: n_mid, el1: h_mid });
+                engine.components.push({ id: compCounter++, type: 'fg_plus', n1: n_in, el1: h_in });
+                engine.components.push({ id: compCounter++, type: 'cro_ch1', n1: n_in, el1: h_in });
+                engine.components.push({ id: compCounter++, type: 'cro_ch2', n1: n_mid, el1: h_mid });
+                engine.components.push({ id: compCounter++, type: 'fg_minus', n1: n_gnd, el1: h_gnd });
+                engine.components.push({ id: compCounter++, type: 'cro_minus', n1: n_gnd, el1: h_gnd });
                 engine.components.push({ id: compCounter++, type: 'gnd', n1: n_gnd, el1: h_gnd });
                 
                 engine.components.push({ id: compCounter++, type: 'resistor', n1: n_in, n2: n_mid, val: 1000, el1: h_in, el2: h_mid });

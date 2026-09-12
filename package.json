@@ -1,0 +1,12 @@
+{
+"name": "3d-circuit-lab",
+"version": "1.0.0",
+"description": "3D Analog Circuit Lab Simulator",
+"main": "server.js",
+"scripts": {
+"start": "node server.js"
+},
+"dependencies": {
+"express": "^4.18.2"
+}
+}

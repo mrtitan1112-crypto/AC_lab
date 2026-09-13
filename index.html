@@ -547,11 +547,13 @@
                     matrix[i][i] += 1e-9;
                 }
 
-                // 2. STAMP COMPONENTS INTO MATRIX
+                // 2. STAMP COMPONENTS INTO MATRIX (Linear Components First)
                 components.forEach(c => {
+                    if (c.type === 'diode') return; // Skip diodes for Newton-Raphson loop later
+
                     let n1 = nodeMap.get(c.node1);
                     let n2 = nodeMap.get(c.node2);
-                    if (n1 === n2) return; // Short circuit
+                    if (n1 === n2) return;
 
                     let g = 0;
                     let i_eq = 0;
@@ -566,16 +568,6 @@
                         const vOld1 = this.voltages[c.node1] || 0;
                         const vOld2 = this.voltages[c.node2] || 0;
                         i_eq = g * (vOld1 - vOld2);
-                    } else if (c.type === 'diode') {
-                        // Diode clipping logic (Resistor model to prevent shading/chatter)
-                        const vOld1 = this.voltages[c.node1] || 0;
-                        const vOld2 = this.voltages[c.node2] || 0;
-                        if ((vOld1 - vOld2) > 0.6) {
-                            g = 1.0 / 10.0; // ON resistance
-                            i_eq = 0.6 * g; // Battery eq
-                        } else {
-                            g = 1.0 / 1e6; // OFF resistance
-                        }
                     }
 
                     if (n1 !== undefined && n1 !== 0) { matrix[n1][n1] += g; rhs[n1] -= i_eq; }
@@ -628,33 +620,103 @@
                     }
                 });
 
-                // 5. SOLVE MATRIX (Gaussian Elimination)
-                for (let i = 1; i < K; i++) {
-                    let maxEl = Math.abs(matrix[i][i]);
-                    let maxRow = i;
-                    for (let k = i + 1; k < K; k++) {
-                        if (Math.abs(matrix[k][i]) > maxEl) { maxEl = Math.abs(matrix[k][i]); maxRow = k; }
-                    }
-                    for (let k = i; k < K; k++) {
-                        let tmp = matrix[maxRow][k]; matrix[maxRow][k] = matrix[i][k]; matrix[i][k] = tmp;
-                    }
-                    let tmp = rhs[maxRow]; rhs[maxRow] = rhs[i]; rhs[i] = tmp;
-
-                    if (Math.abs(matrix[i][i]) > 1e-12) {
-                        for (let k = i + 1; k < K; k++) {
-                            let c = -matrix[k][i] / matrix[i][i];
-                            for (let j = i; j < K; j++) { matrix[k][j] += c * matrix[i][j]; }
-                            rhs[k] += c * rhs[i];
-                        }
-                    }
+                // 5. NEWTON-RAPHSON ITERATION FOR NON-LINEAR DIODES
+                let newV = Array(K).fill(0);
+                
+                // Use previous timestep voltages as initial guess
+                for(let i=1; i<K; i++) {
+                    // Reverse map matrix index to physical node ID to get old voltage
+                    let pNode = [...nodeMap].find(([key, val]) => val == i)[0];
+                    newV[i] = this.voltages[pNode] || 0;
                 }
 
-                // Back Substitution & Store
-                let newV = Array(K).fill(0);
-                for (let i = K - 1; i >= 1; i--) {
-                    if (Math.abs(matrix[i][i]) > 1e-12) {
-                        newV[i] = rhs[i] / matrix[i][i];
-                        for (let k = i - 1; k >= 1; k--) { rhs[k] -= matrix[k][i] * newV[i]; }
+                const MAX_ITER = 10;
+                const TOLERANCE = 1e-6;
+
+                for (let iter = 0; iter < MAX_ITER; iter++) {
+                    // Clone the linear matrix and RHS for this iteration
+                    let iterMatrix = matrix.map(row => [...row]);
+                    let iterRhs = [...rhs];
+
+                    // Stamp Diodes (Shockley Model)
+                    components.forEach(c => {
+                        if (c.type !== 'diode') return;
+                        
+                        let n1 = nodeMap.get(c.node1);
+                        let n2 = nodeMap.get(c.node2);
+                        if (n1 === n2) return;
+
+                        let v1 = (n1 !== undefined && n1 !== 0) ? newV[n1] : 0;
+                        let v2 = (n2 !== undefined && n2 !== 0) ? newV[n2] : 0;
+                        let vd = v1 - v2;
+
+                        // Diode parameters (approx 1N4148)
+                        const Is = 1e-14; // Saturation current
+                        const Vt = 0.02585; // Thermal voltage at room temp (25C)
+                        const n = 1.0; // Ideality factor
+
+                        // Limit vd to prevent exponential explosion in math
+                        let vd_limited = Math.min(vd, 0.8);
+                        
+                        // Shockley equation: I = Is * (e^(Vd / n*Vt) - 1)
+                        // Conductance (Derivative): Geq = (Is / n*Vt) * e^(Vd / n*Vt)
+                        let exp_term = Math.exp(vd_limited / (n * Vt));
+                        let Id = Is * (exp_term - 1);
+                        let Geq = (Is / (n * Vt)) * exp_term;
+                        
+                        // Minimum conductance to help matrix stability (prevents singular matrix)
+                        Geq = Math.max(Geq, 1e-12);
+                        
+                        // Equivalent Norton Current: Ieq = Id - Geq * Vd
+                        let Ieq = Id - Geq * vd_limited;
+
+                        // Stamp into iteration matrix
+                        if (n1 !== undefined && n1 !== 0) { iterMatrix[n1][n1] += Geq; iterRhs[n1] -= Ieq; }
+                        if (n2 !== undefined && n2 !== 0) { iterMatrix[n2][n2] += Geq; iterRhs[n2] += Ieq; }
+                        if (n1 !== undefined && n1 !== 0 && n2 !== undefined && n2 !== 0) {
+                            iterMatrix[n1][n2] -= Geq;
+                            iterMatrix[n2][n1] -= Geq;
+                        }
+                    });
+
+                    // SOLVE MATRIX (Gaussian Elimination) for this iteration
+                    for (let i = 1; i < K; i++) {
+                        let maxEl = Math.abs(iterMatrix[i][i]);
+                        let maxRow = i;
+                        for (let k = i + 1; k < K; k++) {
+                            if (Math.abs(iterMatrix[k][i]) > maxEl) { maxEl = Math.abs(iterMatrix[k][i]); maxRow = k; }
+                        }
+                        for (let k = i; k < K; k++) {
+                            let tmp = iterMatrix[maxRow][k]; iterMatrix[maxRow][k] = iterMatrix[i][k]; iterMatrix[i][k] = tmp;
+                        }
+                        let tmp = iterRhs[maxRow]; iterRhs[maxRow] = iterRhs[i]; iterRhs[i] = tmp;
+
+                        if (Math.abs(iterMatrix[i][i]) > 1e-12) {
+                            for (let k = i + 1; k < K; k++) {
+                                let c = -iterMatrix[k][i] / iterMatrix[i][i];
+                                for (let j = i; j < K; j++) { iterMatrix[k][j] += c * iterMatrix[i][j]; }
+                                iterRhs[k] += c * iterRhs[i];
+                            }
+                        }
+                    }
+
+                    // Back Substitution
+                    let nextV = Array(K).fill(0);
+                    let maxDiff = 0;
+                    for (let i = K - 1; i >= 1; i--) {
+                        if (Math.abs(iterMatrix[i][i]) > 1e-12) {
+                            nextV[i] = iterRhs[i] / iterMatrix[i][i];
+                            for (let k = i - 1; k >= 1; k--) { iterRhs[k] -= iterMatrix[k][i] * nextV[i]; }
+                        }
+                        maxDiff = Math.max(maxDiff, Math.abs(nextV[i] - newV[i]));
+                    }
+
+                    // Update voltages for next iteration
+                    newV = [...nextV];
+
+                    // Check for convergence
+                    if (maxDiff < TOLERANCE) {
+                        break; 
                     }
                 }
 
